@@ -44,10 +44,15 @@ bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-rele
 
 # Configure Xray
 echo "🔧 Configuring Xray..."
-# Get public IP address
-PUBLIC_IP=$(curl -s https://api.ipify.org)
-# Generate random port for Xray
-XRAY_PORT=$(shuf -i 10000-65000 -n 1)
+# Get public IP address from the primary network interface
+PUBLIC_IP=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)[\d.]+' | head -n1)
+
+# Find an available port for Xray
+while :; do
+  XRAY_PORT=$(shuf -i20000-65000 -n1)
+  ss -tln | awk '{print $4}' | grep -q ":${XRAY_PORT}$" || break
+done
+
 # Generate password
 XRAY_PASSWORD=$(openssl rand -base64 16)
 
@@ -83,8 +88,11 @@ rm -f /tmp/realm.tar.gz /tmp/realm > /dev/null
 # Download Realm config from GitHub
 curl -fsSL https://raw.githubusercontent.com/Slinesx/System_Init/main/realm_server.toml -o /usr/local/etc/realm/config.toml > /dev/null
 
-# Generate random port for realm
-REALM_PORT=$(shuf -i 10000-65000 -n 1)
+# Find an available port for Realm
+while :; do
+  REALM_PORT=$(shuf -i20000-65000 -n1)
+  ss -tln | awk '{print $4}' | grep -q ":${REALM_PORT}$" || break
+done
 
 # Ask for remote IP address and SNI
 echo -n "Enter remote IP address for Realm: "
@@ -92,12 +100,16 @@ read REMOTE_IP
 echo -n "Enter SNI for remote_transport: "
 read REMOTE_SNI
 
-# Configure Realm
-sed -i "s/listen = \"0.0.0.0:[0-9]*\"/listen = \"$PUBLIC_IP:$REALM_PORT\"/" /usr/local/etc/realm/config.toml
-sed -i "s/remote = \":[0-9]*\"/remote = \"$REMOTE_IP:40945\"/" /usr/local/etc/realm/config.toml
+# Configure Realm - using exact format from realm_server.toml
+sed -i "s|listen = \".*\"|listen = \"$PUBLIC_IP:$REALM_PORT\"|" /usr/local/etc/realm/config.toml
+sed -i "s|remote = \":[0-9]*\"|remote = \"$REMOTE_IP:40945\"|" /usr/local/etc/realm/config.toml
 
 # Update remote_transport SNI
-sed -i "s/remote_transport = \"tls;sni=\"/remote_transport = \"tls;sni=$REMOTE_SNI\"/" /usr/local/etc/realm/config.toml
+sed -i "s|remote_transport = \"tls;sni=.*\"|remote_transport = \"tls;sni=$REMOTE_SNI\"|" /usr/local/etc/realm/config.toml
+
+# Print the updated realm config for verification
+echo "Realm configuration:"
+cat /usr/local/etc/realm/config.toml
 
 # Download and create systemd service file
 curl -fsSL https://raw.githubusercontent.com/Slinesx/System_Init/main/realm.service -o /etc/systemd/system/realm.service > /dev/null
