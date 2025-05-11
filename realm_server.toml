@@ -1,0 +1,14 @@
+[log]
+level = "error"
+output = "/var/log/realm.log"
+
+[[endpoints]]
+listen = ":"
+remote = ":40945"
+remote_transport = "tls;sni="
+
+[network]
+no_tcp = false
+use_udp = true
+tcp_timeout = 5
+udp_timeout = 30
