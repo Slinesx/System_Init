@@ -89,5 +89,4 @@ echo "✅ Docker removed!"
 # Refresh package cache
 apt-get update -qq > /dev/null 2>&1 || true
 
-echo "🎉 System cleanup complete! All components have been removed."
-echo "   Note: Users may still be part of the 'docker' group. Remove them manually if needed." 
+echo "🎉 System cleanup complete!"
