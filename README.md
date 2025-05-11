@@ -12,6 +12,14 @@ Run as root to install and configure:
 bash -c "$(curl -H 'Cache-Control: no-cache, no-store' -fsSL https://raw.githubusercontent.com/Slinesx/System_Init/main/system_init.sh)"
 ```
 
+### Rollback / Uninstall
+
+To undo all changes and remove installed components:
+
+```bash
+bash -c "$(curl -H 'Cache-Control: no-cache, no-store' -fsSL https://raw.githubusercontent.com/Slinesx/System_Init/main/undo-system.sh)"
+```
+
 ## Repository Contents
 
 - **system_init.sh**  
@@ -21,6 +29,14 @@ bash -c "$(curl -H 'Cache-Control: no-cache, no-store' -fsSL https://raw.githubu
   - Installs Realm network relay tool from GitHub releases
   - Configures system services for both Xray and Realm
   - Sets up firewall exceptions automatically
+
+- **undo-system.sh**  
+  Rollback script:
+  - Stops and removes Realm service and binaries
+  - Uninstalls Xray using official uninstaller
+  - Removes Docker CE, containerd and related components
+  - Removes all users from the docker group and deletes the group
+  - Cleans up all configuration files and services
 
 - **xray_server.conf**  
   Xray configuration template with Shadowsocks protocol, auto-configured with your server's public IP.
