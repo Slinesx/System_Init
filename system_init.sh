@@ -13,7 +13,7 @@ fi
 
 # Check for authorized_keys
 if [ ! -f /root/.ssh/authorized_keys ]; then
-  echo "❌ authorized_keys does not exist!" >&2
+  echo "❌ ssh authorized_keys does not exist!" >&2
   exit 1
 fi
 

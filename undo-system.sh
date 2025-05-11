@@ -131,4 +131,3 @@ echo "✅ Docker removed!"
 apt-get update -qq > /dev/null 2>&1 || true
 
 echo "🎉 System cleanup complete!"
-echo "⚠️  You may need to reconnect to your server with root login."
