@@ -13,7 +13,48 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# ─── 1) Remove Realm ────────────────────
+# ─── 1) Restore SSH configuration ────────────────────────────────────────────
+echo "🔒 Restoring SSH configuration..."
+
+# Restore SSH config from backup if it exists
+if [ -f /etc/ssh/sshd_config.bak ]; then
+  cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config
+  systemctl restart sshd > /dev/null 2>&1 || true
+  echo "  ↳ SSH configuration restored"
+else
+  # If no backup exists, manually restore default settings
+  if [ -f /etc/ssh/sshd_config ]; then
+    sed -i 's/^PermitRootLogin no/PermitRootLogin yes/' /etc/ssh/sshd_config
+    sed -i 's/^PasswordAuthentication no/#PasswordAuthentication yes/' /etc/ssh/sshd_config
+    sed -i 's/^PubkeyAuthentication yes/#PubkeyAuthentication yes/' /etc/ssh/sshd_config
+    sed -i 's/^UsePAM no/UsePAM yes/' /etc/ssh/sshd_config
+    systemctl restart sshd > /dev/null 2>&1 || true
+    echo "  ↳ SSH configuration reset to defaults"
+  fi
+fi
+
+echo "✅ SSH configuration restored!"
+
+# ─── 2) Remove Created User ────────────────────
+echo "👤 Removing created user..."
+
+# Prompt for username to remove
+read -p "Enter username to remove: " USERNAME_TO_REMOVE
+
+if id "$USERNAME_TO_REMOVE" &>/dev/null; then
+  # Kill user processes
+  pkill -u "$USERNAME_TO_REMOVE" > /dev/null 2>&1 || true
+  
+  # Remove user and home directory
+  userdel -r "$USERNAME_TO_REMOVE" > /dev/null 2>&1 || true
+  echo "  ↳ User $USERNAME_TO_REMOVE removed"
+else
+  echo "  ↳ User $USERNAME_TO_REMOVE not found"
+fi
+
+echo "✅ User cleanup complete!"
+
+# ─── 3) Remove Realm ────────────────────
 echo "🌐 Removing Realm..."
 # Stop and disable the service
 systemctl stop realm > /dev/null 2>&1 || true
@@ -27,7 +68,7 @@ systemctl daemon-reload > /dev/null 2>&1 || true
 
 echo "✅ Realm removed!"
 
-# ─── 2) Remove Xray ────────────────────
+# ─── 4) Remove Xray ────────────────────
 echo "📡 Removing Xray..."
 # Use Xray's official uninstaller if available
 if [ -f /usr/local/bin/xray ]; then
@@ -47,7 +88,7 @@ systemctl daemon-reload > /dev/null 2>&1 || true
 
 echo "✅ Xray removed!"
 
-# ─── 3) Remove Docker ────────────────────
+# ─── 5) Remove Docker ────────────────────
 echo "🐳 Removing Docker..."
 # Stop and disable Docker services
 systemctl stop docker.service > /dev/null 2>&1 || true
@@ -90,3 +131,4 @@ echo "✅ Docker removed!"
 apt-get update -qq > /dev/null 2>&1 || true
 
 echo "🎉 System cleanup complete!"
+echo "⚠️  You may need to reconnect to your server with root login."

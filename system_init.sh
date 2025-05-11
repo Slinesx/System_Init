@@ -5,15 +5,59 @@ set -euo pipefail
 trap 'echo "❌ Error on line $LINENO: \`$BASH_COMMAND\`" >&2; exit 1' ERR
 trap 'echo "🔪 Interrupted." >&2; exit 1' INT
 
-echo "🚀 Starting system initialization..."
-
 # Check if script is run as root
 if [ "$EUID" -ne 0 ]; then
   echo "❌ Please run as root!" >&2
   exit 1
 fi
 
-# ─── 1) Docker Installation ────────────────────
+# Check for authorized_keys
+if [ ! -f /root/.ssh/authorized_keys ]; then
+  echo "❌ authorized_keys does not exist!" >&2
+  exit 1
+fi
+
+echo "🚀 Starting system initialization..."
+
+# ─── 1) Create new user with sudo privileges ─────────────────────────────────────
+echo "👤 Creating a new sudo user..."
+read -p "Enter username: " NEW_USER
+useradd -m -G sudo "$NEW_USER"
+passwd "$NEW_USER"
+
+echo "✅ User $NEW_USER created and added to sudo group!"
+
+# ─── 2) Secure SSH configuration ─────────────────────────────────────────────────
+echo "🔒 Configuring SSH security..."
+
+# Create SSH directory for new user if it doesn't exist
+USER_SSH_DIR="/home/$NEW_USER/.ssh"
+mkdir -p "$USER_SSH_DIR"
+
+# Transfer authorized_keys
+cp /root/.ssh/authorized_keys "$USER_SSH_DIR/" 
+
+# Set proper ownership and permissions
+chown -R "$NEW_USER:$NEW_USER" "$USER_SSH_DIR"
+chmod 700 "$USER_SSH_DIR"
+[ -f "$USER_SSH_DIR/authorized_keys" ] && chmod 600 "$USER_SSH_DIR/authorized_keys"
+
+# Update SSH configuration based on the default file structure
+# Make backup of original config
+cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+
+# Simply modify the lines directly from default config
+sed -i 's/^PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+sed -i 's/^#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+sed -i 's/^UsePAM yes/UsePAM no/' /etc/ssh/sshd_config
+
+# Restart SSH service
+systemctl restart sshd
+
+echo "✅ SSH security configured!"
+
+# ─── 3) Docker Installation ────────────────────
 echo "🐳 Installing Docker..."
 
 # Add Docker's GPG key and repository
@@ -27,18 +71,14 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.
 apt-get update -qq > /dev/null
 apt-get install -y -qq ca-certificates curl docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin > /dev/null
 
-# Ask for username to add to docker group
-echo -n "Enter username to add to docker group: "
-read DOCKER_USER
-
-# Configure Docker
-usermod -aG docker $DOCKER_USER > /dev/null
+# Configure Docker - use the newly created user
+usermod -aG docker "$NEW_USER" > /dev/null
 systemctl enable docker.service > /dev/null
 systemctl enable containerd.service > /dev/null
 
 echo "✅ Docker setup complete!"
 
-# ─── 2) Xray Installation ────────────────────
+# ─── 4) Xray Installation ────────────────────
 echo "📡 Installing Xray..."
 bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install > /dev/null
 
@@ -68,7 +108,7 @@ systemctl restart xray > /dev/null
 
 echo "✅ Xray setup complete! Listening on $PUBLIC_IP:$XRAY_PORT with password: $XRAY_PASSWORD"
 
-# ─── 3) Realm Installation ────────────────────
+# ─── 5) Realm Installation ────────────────────
 echo "🌐 Installing Realm..."
 
 # Download latest Realm release
