@@ -107,10 +107,6 @@ sed -i "s|remote = \":[0-9]*\"|remote = \"$REMOTE_IP:40945\"|" /usr/local/etc/re
 # Update remote_transport SNI
 sed -i "s|remote_transport = \"tls;sni=.*\"|remote_transport = \"tls;sni=$REMOTE_SNI\"|" /usr/local/etc/realm/config.toml
 
-# Print the updated realm config for verification
-echo "Realm configuration:"
-cat /usr/local/etc/realm/config.toml
-
 # Download and create systemd service file
 curl -fsSL https://raw.githubusercontent.com/Slinesx/System_Init/main/realm.service -o /etc/systemd/system/realm.service > /dev/null
 
