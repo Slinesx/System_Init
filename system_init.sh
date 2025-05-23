@@ -57,7 +57,34 @@ systemctl restart sshd
 
 echo "✅ SSH security configured!"
 
-# ─── 3) Docker Installation ────────────────────
+# ─── 3) Kernel parameters optimization ─────────────────────────────────────────
+echo "🔧 Updating sysctl settings..."
+
+# Append sysctl.conf content to system configuration
+cat /root/System_Init/sysctl.conf >> /etc/sysctl.conf
+
+# Apply the changes
+sysctl -p > /dev/null
+
+# Configure file descriptor limits
+echo "🔧 Configuring file descriptor limits..."
+cat << EOF >> /etc/security/limits.conf
+
+# Increased file descriptor limits
+* soft nofile 51200
+* hard nofile 51200
+
+# for server running in root:
+root soft nofile 51200
+root hard nofile 51200
+EOF
+
+# Set the current session limit
+ulimit -n 51200
+
+echo "✅ Network parameters optimized!"
+
+# ─── 4) Docker Installation ────────────────────
 echo "🐳 Installing Docker..."
 
 # Add Docker's GPG key and repository
@@ -73,42 +100,18 @@ apt-get install -y -qq ca-certificates curl docker-ce docker-ce-cli containerd.i
 
 # Configure Docker - use the newly created user
 usermod -aG docker "$NEW_USER" > /dev/null
-systemctl enable docker.service > /dev/null
-systemctl enable containerd.service > /dev/null
+systemctl enable docker.service
+systemctl enable containerd.service
 
 echo "✅ Docker setup complete!"
 
-# ─── 4) Xray Installation ────────────────────
-echo "📡 Installing Xray..."
-bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install > /dev/null
+# ─── 5) Vim Installation ──────────────────────
+echo "📝 Installing Vim..."
+apt-get update -qq > /dev/null
+apt-get install -y -qq vim > /dev/null
+echo "✅ Vim installed!"
 
-# Configure Xray
-echo "🔧 Configuring Xray..."
-# Get public IP address from the primary network interface
-PUBLIC_IP=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)[\d.]+' | head -n1)
-
-# Find an available port for Xray
-while :; do
-  XRAY_PORT=$(shuf -i20000-65000 -n1)
-  ss -tln | awk '{print $4}' | grep -q ":${XRAY_PORT}$" || break
-done
-
-# Generate password
-XRAY_PASSWORD=$(openssl rand -base64 16)
-
-# Download and modify config file
-curl -fsSL https://raw.githubusercontent.com/Slinesx/System_Init/main/xray_server.conf -o /usr/local/etc/xray/config.json > /dev/null
-# Update config with IP, port, and password
-sed -i "s/\"listen\": \"\"/\"listen\": \"$PUBLIC_IP\"/" /usr/local/etc/xray/config.json
-sed -i "s/\"port\": [0-9]*/\"port\": $XRAY_PORT/" /usr/local/etc/xray/config.json
-sed -i "s/\"password\": \"\"/\"password\": \"$XRAY_PASSWORD\"/" /usr/local/etc/xray/config.json
-
-# Restart Xray service
-systemctl restart xray > /dev/null
-
-echo "✅ Xray setup complete! Listening on $PUBLIC_IP:$XRAY_PORT with password: $XRAY_PASSWORD"
-
-# ─── 5) Realm Installation ────────────────────
+# ─── 6) Realm Installation ────────────────────
 echo "🌐 Installing Realm..."
 
 # Download latest Realm release
@@ -128,21 +131,22 @@ rm -f /tmp/realm.tar.gz /tmp/realm > /dev/null
 # Download Realm config from GitHub
 curl -fsSL https://raw.githubusercontent.com/Slinesx/System_Init/main/realm_server.toml -o /usr/local/etc/realm/config.toml > /dev/null
 
-# Find an available port for Realm
-while :; do
-  REALM_PORT=$(shuf -i20000-65000 -n1)
-  ss -tln | awk '{print $4}' | grep -q ":${REALM_PORT}$" || break
-done
+# Get local IP address from the primary network interface
+HOST_IP=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)[\d.]+' | head -n1)
+# Get public IP address from external service
+PUBLIC_IP=$(curl -s https://api.ipify.org)
 
-# Ask for remote IP address and SNI
-echo -n "Enter remote IP address for Realm: "
-read REMOTE_IP
+# Ask for remote host (IP:PORT), listen port, and SNI
+echo -n "Enter remote host for Realm (IP:PORT): "
+read REMOTE_HOST
+echo -n "Enter listen port for Realm: "
+read REALM_LISTEN_PORT
 echo -n "Enter SNI for remote_transport: "
 read REMOTE_SNI
 
 # Configure Realm - using exact format from realm_server.toml
-sed -i "s|listen = \".*\"|listen = \"$PUBLIC_IP:$REALM_PORT\"|" /usr/local/etc/realm/config.toml
-sed -i "s|remote = \":[0-9]*\"|remote = \"$REMOTE_IP:40945\"|" /usr/local/etc/realm/config.toml
+sed -i "s|listen = \".*\"|listen = \"$HOST_IP:$REALM_LISTEN_PORT\"|" /usr/local/etc/realm/config.toml
+sed -i "s|remote = \".*\"|remote = \"$REMOTE_HOST\"|" /usr/local/etc/realm/config.toml
 
 # Update remote_transport SNI
 sed -i "s|remote_transport = \"tls;sni=.*\"|remote_transport = \"tls;sni=$REMOTE_SNI\"|" /usr/local/etc/realm/config.toml
@@ -155,4 +159,33 @@ systemctl daemon-reload > /dev/null
 systemctl enable realm > /dev/null
 systemctl start realm > /dev/null
 
-echo "✅ Realm setup complete! Listening on $PUBLIC_IP:$REALM_PORT"
+echo "✅ Realm setup complete! Listening on $PUBLIC_IP:$REALM_LISTEN_PORT"
+
+# ─── 7) Xray Installation ────────────────────
+echo "📡 Installing Xray..."
+bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install > /dev/null
+
+# Configure Xray
+echo "🔧 Configuring Xray..."
+# Use the same HOST_IP and PUBLIC_IP as above
+
+# Find an available port for Xray
+while :; do
+  XRAY_PORT=$(shuf -i20000-65000 -n1)
+  ss -tln | awk '{print $4}' | grep -q ":${XRAY_PORT}$" || break
+done
+
+# Generate password
+XRAY_PASSWORD=$(openssl rand -base64 16)
+
+# Download and modify config file
+curl -fsSL https://raw.githubusercontent.com/Slinesx/System_Init/main/xray_server.conf -o /usr/local/etc/xray/config.json > /dev/null
+# Update config with IP, port, and password
+sed -i "s/\"listen\": \"\"/\"listen\": \"$HOST_IP\"/" /usr/local/etc/xray/config.json
+sed -i "s/\"port\": [0-9]*/\"port\": $XRAY_PORT/" /usr/local/etc/xray/config.json
+sed -i "s/\"password\": \"\"/\"password\": \"$XRAY_PASSWORD\"/" /usr/local/etc/xray/config.json
+
+# Restart Xray service
+systemctl restart xray > /dev/null
+
+echo "✅ Xray setup complete! Listening on $PUBLIC_IP:$XRAY_PORT with password: $XRAY_PASSWORD"
